@@ -1,0 +1,9 @@
+// const login = "gustavo.felix@cbc.coc.com.br";
+// const password = "Educar@2023";
+// const moduloInicial = 73;
+// const moduloFinal = 75;
+
+const exerciseTitle = await page.$eval('.qm-content-toolbar-title', e => {
+  e.getAttribute('title')
+
+});
