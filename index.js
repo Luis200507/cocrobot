@@ -5,6 +5,7 @@ import { GoogleAIFileManager } from "@google/generative-ai/files";
 import * as fs from "fs";
 import * as path from "path";
 import * as url from "url"
+import chalk from "chalk";
 
 
 // Variáveis do app
@@ -32,7 +33,6 @@ const materia = await inquirer.select({
       { name: 'IF Filosofia', value: '43I'},
     ]
 });
-console.log(`Você escolheu ${materia}.\n`);
 
 const moduloInicial = await inquirer.number({
   message: 'Em qual módulo deseja iniciar? (apenas números)'
@@ -43,6 +43,15 @@ const moduloFinal = await inquirer.number({
 
 
 let numeroDeAtividades;
+let exerciseAtual;
+let questaoAtual;
+let moduloAtual;
+
+const finalReport = {
+  incorrectCount: 0,
+  incorrectQuestions: []
+};
+
 const regex = /\d+/g;
 
 // Configuração da API
@@ -65,7 +74,7 @@ async function asleep(t) {
 async function navegarEResponderModulos(page) {
   const modulosCards = await page.$$('.qm-qplano__subsection');
 
-  for (let moduloAtual = moduloInicial; moduloAtual <= moduloFinal; moduloAtual++) {
+  for (moduloAtual = moduloInicial; moduloAtual <= moduloFinal; moduloAtual++) {
     console.log(`Entrando no módulo: ${moduloAtual}\n`);
 
     // Entra no módulo atual
@@ -78,10 +87,15 @@ async function navegarEResponderModulos(page) {
     // Volta para a página anterior (página de módulos)
     await page.goBack();
 
-    console.log(`Voltando para a página de módulos. Próximo módulo: ${moduloAtual + 1}\n`);
   }
 
   console.log('Todos os módulos foram processados.\n');
+  if (finalReport.incorrectCount > 0) {
+    console.log(chalk.bgYellow(`Aviso: Algumas questões não conseguiram ser respondidas, considere finalizá-las manualmente.\n`))
+    finalReport.incorrectQuestions.forEach(qst => {
+      console.log(`Questão errada número ${qst.number}, módulo ${qst.modulo}, em: ${qst.exercise}`)
+    })
+  }
 };
 
 async function entrarNoModulo(modulo, modulosCards, page) {
@@ -120,8 +134,6 @@ async function entrarNoModulo(modulo, modulosCards, page) {
             await proximoElemento.dispose(); // Dispose the current handle to avoid memory leaks
             proximoElemento = nextHandle.asElement();
           }
-
-          console.log(`Número de atividades encontradas: ${numeroDeAtividades}\n`);
 
           // Continuar com o loop para encontrar e clicar no exercício correto
           proximoElemento = (await page.evaluateHandle(el => el.nextElementSibling, moduloCard)).asElement()
@@ -247,12 +259,18 @@ async function verificarImagens(page, tipo, conteudoDaQuestao, alternativas) {
 }
 
 async function responderQuestao(page) {
-  await page.waitForSelector('.emg-exercise-feedback-correct, .emg-exercise-box-padding, .emg-discursive-answer-view-mode, .emg-discursive-answer-edit-mode', { visible: true });
+  try {
+    await page.waitForSelector('.emg-exercise-feedback-correct, .emg-exercise-box-padding, .emg-discursive-answer-view-mode, .emg-discursive-answer-edit-mode', { visible: true, timeout: 500 });
+  } catch {
+    console.log('Questão com gabarito visualizado, pulando...')
+    return;
+  }
+  
   const isAnsweredObjective = await page.$('.emg-exercise-feedback-correct') // todos os modos exceto as serem corrigidas pelo prof
   const isAnsweredSubjective = await page.$('.emg-discursive-answer-view-mode:not(.revision-slot)')
 
   if (isAnsweredObjective || isAnsweredSubjective) {
-    console.log('Questao já respondida.\n')
+    console.log(chalk.bgRed.bold('Questao já respondida.\n'))
   } else {
     try {
       await page.waitForSelector('.emg-discursive-answer, .emg-exercise-multiple-choice-answers-wrapper, #blank1', { visible: true, timeout: 500 });
@@ -349,16 +367,32 @@ async function responderQuestao(page) {
         const isIncorrect = await page.$('.emg-exercise-feedback-incorrect');
 
         if (!isIncorrect) {
-          console.log('Resposta correta!\n');
+          console.log(chalk.bgGreen('Resposta correta!\n'));
           break; // Sai do loop se a resposta estiver correta
         } else {
-          console.log('Resposta incorreta, tentando novamente...\n');
+          console.log(chalk.bgRed('Resposta incorreta, tentando novamente...\n'));
+
+          const isPartialCardVisible = await page.evaluate(element => {
+            return element.classList.contains('visible');
+          }, await page.$('.exerciselist-card-partial'));
+    
+          if (isPartialCardVisible) {
+            await page.click('.exerciselist-card-close-btn');
+          }
+
           tentativa++;
         }
       }
 
       if (tentativa === maxTentativas) {
         console.log('Número máximo de tentativas atingido.\n');
+        finalReport.incorrectCount++
+        finalReport.incorrectQuestions.push({
+          number: questaoAtual,
+          modulo: moduloAtual,
+          exercise: exerciseAtual,
+        })
+
       }
     } else if (typeOfQuestion === 'Subjetiva') {
       let resposta;
@@ -390,28 +424,88 @@ async function responderQuestao(page) {
       await submitAnswer.click();
       await asleep(16);
     } else if (typeOfQuestion === 'Blanks') {
+      let tentativa = 0;
+      let maxTentativas = 1;
       let resposta;
+      let text;
+      let incorrects = [];
 
-      if (conteudoDaQuestao.containsImage) {
-        resposta = await verificarImagens(page, typeOfQuestion, conteudoDaQuestao, []);
-      } else {
-        resposta = await chatSession.sendMessageStream(`resolva a seguinte questão, e considere o formato sendo questoes de preencher parenteses. Me retorne apenas uma cadeia de caracteres, exemplo "VVVVV" ou "FFFFF", dependendo do tanto de perguntas que a questao tiver e o que ela pedir (V ou F; T ou F, e qualquer outros): ${conteudoDaQuestao.texto}`);
-      }
+      while (tentativa <= maxTentativas) {
+        if (tentativa === 0) {
+          if (conteudoDaQuestao.containsImage) {
+            resposta = await verificarImagens(page, typeOfQuestion, conteudoDaQuestao, []);
+            const response = await resposta.response;
+            text = response.text().trim();
+          } else {
+            resposta = await chatSession.sendMessageStream(`resolva a seguinte questão, e considere o formato sendo questoes de preencher parenteses. Me retorne apenas uma cadeia de caracteres, exemplo "VVVVV" ou "FFFFF", dependendo do tanto de perguntas que a questao tiver e o que ela pedir (V ou F; T ou F, e qualquer outros): ${conteudoDaQuestao.texto}`);
+            const response = await resposta.response;
+            text = response.text().trim();
+          }
+        } else {
+          // pega o index das incorretas
+          for (let i = 0; i < text.length; i++) {
+            const selector = `#blank${i + 1}`;
+            const state = await page.$eval(selector, e => {
+              const style = e.getAttribute('style').toString()
+              if (style.includes('#EF3A2A')) {
+                return 'errada';
+              }
+            })
+        
+            if (state === 'errada') {
+              incorrects.push(i)
+            }
+          }
+  
+          // inverte as afirmações
+          let chars = text.split('');
+  
+          incorrects.forEach(e => {
+            const char = chars[e];
+            switch (char) {
+              case 'V':
+                chars[e] = 'F'
+                break
+              case 'F':
+                chars[e] = 'V'
+                break
+            }
+          })
+  
+          text = chars.join('');
+        }
+        
+        console.log(`Resposta correta: ${text}\n`);
+        for (let i = 0; i < text.length; i++) {
+          const selector = `#blank${i + 1}`;
+          const inputHandle = await page.$(selector);
+          await page.evaluate(e => e.value = '', inputHandle) // limpar antes de escrever
+          await inputHandle.type(text[i]);
+          await asleep(1)
+        }
+        const submitAnswer = await page.$('.emg-exercise-box-padding > button');
+        await submitAnswer.click();
+        await asleep(16)
+  
+        const isIncorrect = await page.$('.emg-exercise-feedback-incorrect');
+  
+        if (!isIncorrect) {
+          console.log(chalk.bgGreen('Resposta correta!\n'));
+          break;
+        } else {
+          console.log(`Resposta errada, corrigindo afirmações...`)
+          const isPartialCardVisible = await page.evaluate(element => {
+            return element.classList.contains('visible');
+          }, await page.$('.exerciselist-card-partial'));
     
-      const response = await resposta.response;
-      const text = response.text().trim();
-      console.log(text.length)
-      console.log(`Resposta correta: ${text}\n`);
-      for (let i = 0; i < text.length; i++) {
-        console.log(i + 1)
-        const selector = `#blank${i + 1}`;
-        const inputHandle = await page.$(selector);
-        await inputHandle.type(text[i]);
-        await asleep(1)
+          if (isPartialCardVisible) {
+            await page.click('.exerciselist-card-close-btn');
+          }
+
+          tentativa++
+        }
       }
-      const submitAnswer = await page.$('.emg-exercise-box-padding > button');
-      await submitAnswer.click();
-      await asleep(16)
+
     } else {
       let resposta;
 
@@ -426,10 +520,10 @@ async function responderQuestao(page) {
       console.log(`Resposta correta: ${text}\n`);
 
       const promiseInput = await page.$$('.form-control')
-      const input = promiseInput[5];;
+      const input = promiseInput[5];
       await input.type(text);
-      // const submitAnswer = await page.$('.emg-exercise-box-padding > button');
-      // await submitAnswer.click();
+      const submitAnswer = await page.$('.emg-exercise-box-padding > button');
+      await submitAnswer.click();
       await asleep(16)
     }
   };
@@ -437,13 +531,17 @@ async function responderQuestao(page) {
 
 async function responderExers(page) {
   for (let atividadeAtual = 1; atividadeAtual <= numeroDeAtividades; atividadeAtual++) {
-    console.log(atividadeAtual + '\n');
+    await page.waitForSelector('.qm-content-toolbar-title');
+    exerciseAtual = await page.$eval('.qm-content-toolbar-title', e => {
+      return e.getAttribute('title')
+    });
+    console.log(`Respondendo atividade número ${atividadeAtual}: ${chalk.red(exerciseAtual)}`);
+
     await page.waitForSelector('.emg-exerciselist-navigator-list-item')
     const exerciseList = await page.$$('.emg-exerciselist-navigator-list-item');
     const numeroDeQuestoes = exerciseList.length;
-    console.log(`Número de Questões: ${numeroDeQuestoes}\n`);
+    console.log(chalk.blue(`Número de Questões: ${numeroDeQuestoes}\n`));
     let questoes = [];
-    let conclusionCard;
 
     for (let element of exerciseList) {
       const numero = await element.$eval('.emg-btn-question', button => button.innerText.trim());
@@ -455,32 +553,44 @@ async function responderExers(page) {
     };
 
     for (let questao of questoes) {
-      
+      questaoAtual = questao.numero;
       // Clique na questão atual para exibi-la
       await questao.elemento.click();
       console.log(`Respondendo à questão ${questao.numero}\n`);
 
       // Chama a função para responder a questão
-      await responderQuestao(page, questao);
+      const maxTentativas = 3 // tentativa de chamar api
+      let tentativas = 0
+      let success = false
 
-      conclusionCard = await page.$('.exerciselist-card-partial');
-      
-      if (conclusionCard) {
-
-        const isVisible = await page.evaluate(element => {
-          return element.classList.contains('visible');
-        }, conclusionCard);
-  
-        if (isVisible) {
-          await page.click('.exerciselist-card-close-btn');
-          console.log('Fechou');
-          break
+      while (!success && tentativas < maxTentativas) {
+        try {
+          tentativas++
+          await responderQuestao(page, questao);
+          success = true
+        } catch (err) {
+          console.error(`Tentativa ${tentativas} falhou ao responder a questão ${questao.numero}:`, err.statusText);
+          if (tentativas >= maxTentativas) {
+            console.error(`Número máximo de tentativas alcançado para a questão, erro de api ${questao.numero}. Pulando para a próxima...`);
+            break;
+          }
         }
+      }
 
+      const isConclusionCardVisible = await page.evaluate(element => {
+        return element.classList.contains('visible');
+      }, await page.$('.exerciselist-card'));
+
+      if (isConclusionCardVisible) {
+        await page.click('.exerciselist-card-close-btn');
+        break
       }
     }
 
     console.log('Todas as questões foram respondidas.\n');
+    await asleep(2)
+    console.clear();
+
     await Promise.all([
       page.waitForNavigation(),
       page.click('[title="Próxima atividade"]')
@@ -532,4 +642,5 @@ async function responderExers(page) {
   await page.waitForSelector('.qm-qplano__subsection');
   await navegarEResponderModulos(page);
 
+  await browser.close();
 })();
