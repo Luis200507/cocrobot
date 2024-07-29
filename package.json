@@ -1,15 +1,12 @@
 {
+  "name": "cocrobot",
+  "main": "./index.js",
   "dependencies": {
     "@inquirer/prompts": "^5.3.2",
     "axios": "^1.7.2",
     "chalk": "^5.3.0",
     "esm": "^3.2.25",
-    "openai": "^4.49.0",
-    "puppeteer": "^22.10.0",
-    "request": "^2.88.2"
+    "puppeteer": "^22.10.0"
   },
-  "type": "module",
-  "devDependencies": {
-    "@types/axios": "^0.14.0"
-  }
+  "type": "module"
 }

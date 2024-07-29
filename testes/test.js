@@ -8,10 +8,11 @@ import * as url from "url"
 import chalk from "chalk";
 
 
-
 // Variáveis do app
 
 const siteUrl = "https://passaporte.coc.com.br/giul/api/oauth2/authorize?client_id=eduqo&response_type=code&access_token=1a7e737b-508d-4a52-9924-d94d60ad3c70";
+const login = 'gustavo.felix@cbc.coc.com.br'
+const password = 'Educar@2023'
 const regex = /\d+/g;
 let numeroDeAtividades;
 let exerciseAtual;
@@ -21,13 +22,13 @@ let materia;
 
 // Terminal prompts 
 
-const login = await inquirer.input({
-  message: 'Insira seu email de login:'
-});
+// const login = await inquirer.input({
+//   message: 'Insira seu email de login:'
+// });
 
-const password = await inquirer.input({
-  message: 'Agora, insira sua senha:'
-});
+// const password = await inquirer.input({
+//   message: 'Agora, insira sua senha:'
+// });
 
 const fgbOrIt = await inquirer.select({
   message: 'Escolha um tipo:',
@@ -782,20 +783,20 @@ async function responderExers(page) {
 
   await page.goto(siteUrl);
 
-  await page.waitForSelector(".hkKGjB");
+  // await page.waitForSelector(".hkKGjB");
 
-  await page.type(".hkKGjB", login);
-  await page.type(".hVUGKM", password);
-  await Promise.all([
-    page.waitForNavigation(),
-    page.click(".cHpGAw")
-  ]);
+  // await page.type(".hkKGjB", login);
+  // await page.type(".hVUGKM", password);
+  // await Promise.all([
+  //   page.waitForNavigation(),
+  //   page.click(".cHpGAw")
+  // ]);
 
-  await page.waitForSelector(".hOLIpx");
-  const qmagicLink = await page.$('.hOLIpx > a');
-  const href = await qmagicLink.getProperty('href');
-  const hrefValue = await href.jsonValue();
-  await page.goto(hrefValue);
+  // await page.waitForSelector(".hOLIpx");
+  // const qmagicLink = await page.$('.hOLIpx > a');
+  // const href = await qmagicLink.getProperty('href');
+  // const hrefValue = await href.jsonValue();
+  // await page.goto(hrefValue);
 
   await page.waitForSelector('.course-display-card__info');
   const cadernos = await page.$$eval('.course-display-card__info > a', elements => {
