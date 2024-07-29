@@ -12,6 +12,7 @@ import chalk from "chalk";
 // Variáveis do app
 
 const siteUrl = "https://passaporte.coc.com.br/giul/api/oauth2/authorize?client_id=eduqo&response_type=code&access_token=1a7e737b-508d-4a52-9924-d94d60ad3c70";
+const API_KEY = "AIzaSyAAKzelI5i6qCKYyJ-Dpy0T21dswLajFpU";
 const regex = /\d+/g;
 let numeroDeAtividades;
 let exerciseAtual;
@@ -120,11 +121,11 @@ const safetySettings = [
   { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE }
 ];
-const genAI = new GoogleGenerativeAI(process.env.API_KEY);
+const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro", safetySettings });
 const generationConfig = { temperature: 0, maxOutputTokens: 8192, responseMimeType: "text/plain" };
 const chatSession = model.startChat({ generationConfig });
-const fileManager = new GoogleAIFileManager(process.env.API_KEY);
+const fileManager = new GoogleAIFileManager(API_KEY);
 
 // Funções
 async function asleep(t) {
