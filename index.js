@@ -11,7 +11,7 @@ import chalk from "chalk";
 
 // Variáveis do app
 
-const siteUrl = "https://passaporte.coc.com.br/giul/api/oauth2/authorize?client_id=eduqo&response_type=code&access_token=1a7e737b-508d-4a52-9924-d94d60ad3c70";
+const siteUrl = "https://portal.coc.com.br/login/";
 const API_KEY = "AIzaSyAAKzelI5i6qCKYyJ-Dpy0T21dswLajFpU";
 const regex = /\d+/g;
 let numeroDeAtividades;
