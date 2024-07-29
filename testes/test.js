@@ -1,7 +1,7 @@
 import * as puppeteer from "puppeteer";
 import * as inquirer from "@inquirer/prompts";
 import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
-import { GoogleAIFileManager } from "@google/generative-ai/files";
+import { GoogleAIFileManager } from "@google/generative-ai/server";
 import * as fs from "fs";
 import * as path from "path";
 import * as url from "url"
